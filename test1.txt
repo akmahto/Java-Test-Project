@@ -1,0 +1,418 @@
+build.gradle
+------------
+apply plugin: 'java'
+apply plugin: 'application'
+
+// For Kotlin
+apply plugin: 'kotlin'
+
+sourceCompatibility = '1.8'
+
+// Main Class for DropWizard
+mainClassName = 'com.enstage.test.rest.dw.TestRestApi'
+
+version = '6.5.12.14'
+
+// For Kotlin
+buildscript {
+    ext.kotlin_version = '1.1.4-3'
+
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://jitpack.io" }
+}
+
+configurations {
+    capsule
+}
+
+tasks.withType(JavaExec) {
+    if (System.getProperty('DEBUG', 'false') == 'true') {
+        jvmArgs '-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=9099'
+    }
+}
+
+dependencies {
+
+
+    compile project(":test-api-core")
+    
+    compile project(":test-analytics-api-client")
+
+    compile 'com.rabbitmq:amqp-client:5.0.0'
+
+    compile group: 'com.google.firebase', name: 'firebase-admin', version: '6.14.0'
+    
+    compile fileTree(dir: 'cmslib', include: ['*.jar'])
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    capsule 'co.paralleluniverse:capsule:1.0.2'
+    // For Quartz-DropWizard NICE Integration
+    compile "org.quartz-scheduler:quartz:2.3.0"
+    testCompile group: 'org.hamcrest', name: 'hamcrest-all', version: '1.3'
+    compile "org.mockito:mockito-core:2.10.0"
+
+
+}
+
+// For Kotlin
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+
+// For Kotlin
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+
+run {
+    systemProperty "test.config", "cfg/test.yml"
+    systemProperty "tokenization.config", "cfg/tokenization.properties"
+    systemProperty "ACCOSA_APP_ROOT", "./cfg/"
+    systemProperty "com.enstage.hsm.HSMInterface.MaxPoolSize", "50"
+    systemProperty "REST_API_VERSION", version
+    systemProperty "REST_API_BUILD_DATE", "01-SEP-2022 18:00 PM"
+
+    systemProperty "HSM_PROPERTY_FILE_LOCATION", "D:\\work\\Test\\cfg\\accosa\\config\\hsm_connection.properties"
+//    systemProperty "https.proxyHost" ,"192.168.104.60"
+//    systemProperty "https.proxyPort","8888"
+//    systemProperty "MAIN_CLUSTER","TRUE"
+
+}
+
+test {
+	systemProperties = System.properties
+}
+
+
+reporting.baseDir = "${project.rootDir}/testreport/"
+task showDirs {
+    doLast {
+       logger.quiet(rootDir.toPath().relativize(project.testResultsDir.toPath()).toString())
+    }
+}
+
+task capsule(type: Jar, dependsOn: classes) {
+    archiveName = "test-api-dw.jar"
+  
+    from jar // embed our application jar
+    from { configurations.runtime } // embed dependencies
+    from { sourceSets.main.resources }
+ 
+    from(configurations.capsule.collect { zipTree(it) }) { include 'Capsule.class' } // we just need the single Capsule class
+   
+    manifest {
+        attributes(
+            'Premain-Class'  :   'Capsule',
+            'Main-Class'  :   'Capsule',
+            'Application-Class'   : mainClassName,
+            'Application-Version' : version,
+            'Min-Java-Version' : '1.8.0',
+            'JVM-Args' : run.jvmArgs.join(' '),
+            'System-Properties' : run.systemProperties.collect { k,v -> "$k=$v" }.join(' '),
+            //'System-Properties' : (run.systemProperties + ["test.config": '$CAPSULE_DIR/cfg/test.yml']).collect { k,v -> "$k=$v" }.join(' '),
+            //'System-Properties' : (run.systemProperties + ["test.config": './cfg/test.yml']).collect { k,v -> "$k=$v" }.join(' '),
+        )
+    }
+}
+
+
+******************************* test.bat *************
+@Echo Off
+title Test
+
+Echo Starting  ...
+#set JAVA_HOME=E:\Java1.8\
+#set PATH=%JAVA_HOME%\bin;%PATH%;
+java -version
+
+#---------------
+#CB Index Stuff
+#-DreplicaWith='WITH {"nodes":["node1:8091", "node2:8091"]};'
+#-DindexNamePrefix='node1_'
+#-DindexNode=127.0.0.1:8091
+#-Dnum_index_replica=0
+#
+#-DindexNamePrefix='node1_' -DindexNode=127.0.0.1:8091
+#---------------
+java -server -DMAIN_CLUSTER=FALSE -DENABLE_HTTP_LOGGING=true -Dhttps.proxyHost=192.168.104.60 -Dhttps.proxyPort=8888 -DHTTP_PROXY_IP=192.168.104.60 -DHTTP_PROXY_PORT=8888 -DAPPNAME=Wibmo_API_REST_1 -DHSM_PROPERTY_FILE_LOCATION=D:\\work\\test_migration\\test-wallet-migration-service\\cfg\\accosa\\config\\hsm_connection.properties -Dtest.config=cfg/test.yml -DACCOSA_APP_ROOT=./cfg/ -DWIBMO_PROXY_IP=192.168.104.60 -DWIBMO_PROXY_PORT=8888 -Dcom.quickserverlab.quickcached.client.defaultImpl=QuickCached -Xms150m -Xmx1024m -XX:NewRatio=1 -XX:CompileThreshold=1500 -Xmaxjitcodesize80m -verbose:gc -XX:+PrintGCDateStamps -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintHeapAtGC -XX:+PrintTenuringDistribution -XX:+HeapDumpOnOutOfMemoryError -XX:+PrintClassHistogram -XX:+PrintConcurrentLocks -XX:+PrintTenuringDistribution -Xloggc:verbose_gc.log -jar build/libs/test-api-dw.jar %*
+GoTo :END
+
+
+******************* test.yml **************************
+# unique per IP-port, help determine from which DC cluster and which node. DYN could change IP in between
+nodeId : blr_n1
+urls :
+    #put slash at end
+    api : https://api.pcdev.enstage-sas.com/
+
+quartz :
+    instanceName : scheduler
+    instanceId : AUTO
+    # Quartz checks for updates. This should be turned off for production systems.
+    skipUpdateCheck : true
+    threadPoolClass : org.quartz.simpl.SimpleThreadPool
+    threadCount : 10
+    threadPriority : 5
+    misfireThreshold : 60000
+jobs: 
+  kYCAutoUpgradeQuartzJob: "0 0 0 ? * *" 
+
+external: true
+logRequestAndResponse : true
+feignLogEnabled: true
+enableConnectionPoolLeakCheck : true
+logPath: ./logs/
+
+
+hsmInterface:
+  host: hsm.TEST.com
+  port: 9200
+  paramKey: en_data_enc_issuerA
+
+coreConfig:
+    cachesConfig :
+        # which to use "couchbase" (without quotes). For now any other value means memcached with possible seperate server-port lists
+        # for memcache the password and bucket is ignored. For couchbase the name we use in code (like globalGeneral) can be different than bucket name for flexibility.
+
+        impl : redis-cluster
+        caches:
+            globalGeneral:
+                serversList : 192.168.106.102:8204 192.168.106.102:8205 192.168.106.102:8203 192.168.108.121:8201 192.168.108.121:8202 192.168.108.121:8206
+                maxAttempts: 3
+                connTimeOut: 500
+                soTimeOut: 500
+                maxRedirects: 3
+                maxIdle: 3
+                maxTotal: 300
+                maxWaitMillis: 3000
+#                password: redis
+
+
+            session :
+                serversList : 192.168.106.102:8204 192.168.106.102:8205 192.168.106.102:8203 192.168.108.121:8201 192.168.108.121:8202 192.168.108.121:8206
+                maxAttempts: 3
+                connTimeOut: 500
+                soTimeOut: 500
+                maxRedirects: 3
+                maxIdle: 3
+                maxTotal: 300
+                maxWaitMillis: 3000
+#                password: redis
+
+
+
+
+allowedDomains: -all-
+
+#Server configuration.
+server:
+    applicationConnectors:
+#        - type: http
+#          port: 8080
+        - type: https
+          port: 8443
+          keyStorePath: cfg/localhost.jks
+          keyStorePassword: password
+          validateCerts: false
+          validatePeers: false
+    adminConnectors:
+        #- type: http
+        #  port: 8081
+        - type: https
+          port: 8444
+          keyStorePath: cfg/localhost.jks
+          keyStorePassword: password
+          validateCerts: false
+          validatePeers: false
+    requestLog:
+        appenders:
+          - type : file
+            currentLogFilename: ./logs/access.log
+            archivedLogFilenamePattern: ./logs/access-%d.log.gz
+            archivedFileCount: 5
+            timeZone: IST
+
+cacheBuckets:
+  6019: cache
+
+aadhaarVaultEnabled: true
+TESTAnalyticsConfig:
+        serverDomain: https://api-uat.analytics.TEST.com
+        productName: Wibmo-Dev
+        apiKey: test123
+        apiUser: Wibmo-Dev
+        enable: false
+postgresEnabled: true
+databaseList:
+    - poolName: PC_Global_Pool
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_GLOBAL
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: IN_GEO
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_IN
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 4
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: GEO_PROGRAM_6019_USER_DATA_POOL
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_IN_6019_USR_DATA
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 5
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: GEO_PROGRAM_6019_DATA_POOL
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_IN_6019_DATA
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 6
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+
+
+    - poolName: PROGRAM_6019_READ_ONLY_POOL
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_IN_6019_DATA
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 6
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: PROGRAM_6019_READ_ONLY_USER_DATA_POOL
+      dataSourceClassName: com.mysql.jdbc.jdbc2.optional.MysqlDataSource
+      jdbcUrl: jdbc:mysql://192.168.106.101:3306/TEST_IN_6019_USR_DATA
+      username: root
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 5
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+  
+postgressPools:
+    6019:
+        programAuditDataPoolName: 6019_AUDIT_DATA
+        programReadOnlyAuditDataPoolName: 6019_READONLY_AUDIT_INFO
+        programDataPoolName: 6019_PROGRAM_DATA
+        programReadOnlyDataPoolName: 6019_READONLY_PROGRAM_DATA
+
+
+postgressDBList:
+    - poolName: READ_ONLY_TEST_GLOBAL
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.41:5432/dev_TEST_global
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout: 1000
+
+    - poolName: TEST_GLOBAL
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.40:5432/dev_TEST_global
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout: 1000
+
+    - poolName: 6019_READONLY_AUDIT_INFO
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.41:5432/dev_TEST_6019_audit_data
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: 6019_AUDIT_DATA
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.40:5432/dev_TEST_6019_audit_data
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: 6019_PROGRAM_DATA
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.40:5432/dev_TEST_6019_program_data
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+    - poolName: 6019_READONLY_PROGRAM_DATA
+      dataSourceClassName: org.postgresql.Driver
+      jdbcUrl: jdbc:postgresql://192.168.110.41:5432/dev_TEST_6019_program_data
+      username: TEST_dev
+      password: 7uFMtEjOaPM=
+      maximumPoolSize: 10
+      minimumIdle: 0
+      connectionTimeout : 1000
+
+# Logging settings.
+logging:
+  # The default level of all loggers. Can be OFF, ERROR, WARN, INFO, DEBUG, TRACE, or ALL.
+  level: INFO
+  # Logger-specific levels.
+  loggers:
+    # Overrides the level of com.example.dw.Thing and sets it to DEBUG.
+    "com.enstage": ALL
+    "org.eclipse.jetty.server.ServerConnector": INFO
+    "com.whirlycott.cache": WARN
+    "org.quickserver.net.client.pool": WARN
+    "com.couchbase.client.core.event.consumers": WARN
+    "com.zaxxer.hikari" : WARN
+    "org.hibernate.validator" : WARN
+  appenders:
+    - type: console
+      threshold: ERROR
+      logFormat: "%-30(%d\t[%thread])\t%-5level\t%logger{32}.%M\t%msg%n"
+      target: stderr
+      timeZone: IST
+
+    # Log info, warnings and errors to our apps' main log.
+    # Rolled over daily and retained for 5 days.
+    - type: file
+      threshold: INFO
+      currentLogFilename: ./logs/TEST-main.log
+      archivedLogFilenamePattern: ./logs/TEST-main-%d.log.gz
+      logFormat: "%-30(%d\t[%thread])\t%-5level\t%logger{32}.%M\t%msg%n"
+      archivedFileCount: 5
+      timeZone: IST
+
+    # Log debug messages, info, warnings and errors to our apps' debug log.
+    # Rolled over hourly and retained for 24 hours
+    - type: file
+      threshold: TRACE
+      logFormat: "%-30(%d\t[%thread])\t%-5level\t%logger{32}.%M\t%msg%n"
+      # 2017-05-17 19:00:40,653 [TEST_P2MERCHANT_CAPTURE_FUND] ERROR c.e.p.m.p2m.WibmoP2Merchant.getEligibleWibmoMerchant - Error while fetching P2Merchants list : com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException: Table 'TEST_in_6023_data.TEST_p2m_merchant_master' doesn't exist
+      currentLogFilename: ./logs/TEST-debug.log
+      #archivedLogFilenamePattern: ./logs/TEST-debug-%d{yyyy-MM-dd-HH}.log.gz
+      archivedLogFilenamePattern: ./logs/TEST-debug-%d{yyyy-MM-dd-HH}-%i.log.gz
+      archivedFileCount: 48
+      timeZone: IST
+      maxFileSize: 10MB
